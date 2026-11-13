@@ -6,8 +6,8 @@ from datetime import datetime, time
 from zoneinfo import ZoneInfo
 
 import requests
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from dotenv import load_dotenv
 
 # --- Sozlamalar ---
@@ -28,6 +28,15 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+
+
+# --- Tugma klaviaturasi ---
+WEATHER_BUTTON = "🌤️ Ob-havo"
+
+def get_main_keyboard():
+    """Asosiy tugma klaviaturasini qaytaradi."""
+    keyboard = [[KeyboardButton(WEATHER_BUTTON)]]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
 
 
 # --- Ob-havo ma'lumotlarini olish ---
@@ -170,10 +179,16 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         save_subscribers(subscribers)
         await update.message.reply_text(
             "Ob-havo obunangiz qilindi! Har kuni ertalab 07:00 da ob-havo xabari keladi.\n"
-            "To'xtatish uchun /stop bosing."
+            "To'xtatish uchun /stop bosing.\n\n"
+            "Hozirgi ob-havoni ko'rish uchun quyidagi tugmani bosing:",
+            reply_markup=get_main_keyboard()
         )
     else:
-        await update.message.reply_text("Siz allaqachon obunacholisiz.")
+        await update.message.reply_text(
+            "Siz allaqachon obunacholisiz.\n\n"
+            "Hozirgi ob-havoni ko'rish uchun quyidagi tugmani bosing:",
+            reply_markup=get_main_keyboard()
+        )
 
 
 async def stop_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -190,9 +205,15 @@ async def stop_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def weather_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     weather = get_weather_for_today()
     if weather:
-        await update.message.reply_text(build_weather_message(weather))
+        await update.message.reply_text(build_weather_message(weather), reply_markup=get_main_keyboard())
     else:
-        await update.message.reply_text("Kechirasiz, ob-havo ma'lumotlarini olishda xatolik yuz berdi.")
+        await update.message.reply_text("Kechirasiz, ob-havo ma'lumotlarini olishda xatolik yuz berdi.", reply_markup=get_main_keyboard())
+
+
+# --- Tugma bosilganda ishlovchi handler ---
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.text == WEATHER_BUTTON:
+        await weather_cmd(update, context)
 
 
 # --- Kunlik avtomatik yuborish ---
@@ -225,6 +246,9 @@ def main():
     app.add_handler(CommandHandler("start", start_cmd))
     app.add_handler(CommandHandler("stop", stop_cmd))
     app.add_handler(CommandHandler("obhavo", weather_cmd))
+
+    # Tugma bosilganda
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, button_handler))
 
     # Kunlik avtomatik yuborish (ertga 07:00 da Toshkent vaqtida)
     job_queue = app.job_queue
